@@ -16,7 +16,8 @@ class BubbleGame(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.current_size = 0
-        self.pop_limit = random.randint(10, 50)
+        # UPDATED: Pop limit is now between 1 and 30
+        self.pop_limit = random.randint(1, 30)
         self.user_stats = {} 
 
     @discord.ui.button(label="Poke the Bubble 🫧", style=discord.ButtonStyle.primary, custom_id="poke_button")
@@ -58,7 +59,7 @@ class BubbleGame(View):
             elif percent > 0.5:
                 status = "The bubble is getting really big... 😳"
 
-            # UPDATED MESSAGE: Now includes "Last Poke: {user.mention}"
+            # UPDATED MESSAGE: Includes "Last Poke: {user.mention}"
             await interaction.response.edit_message(
                 content=f"{status}\nLast Poke: {user.mention}\nCurrent Pokes: **{self.current_size}**", 
                 view=self

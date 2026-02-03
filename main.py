@@ -31,36 +31,41 @@ class BubbleGame(View):
     async def poke_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
         
-        # Track stats
+        # 1. Update User Stats (Actual Clicks)
         if user.mention not in self.user_stats:
             self.user_stats[user.mention] = 0
         self.user_stats[user.mention] += 1
         
+        # 2. Increment Bubble Size
         self.current_size += 1
 
         # --- RIGGING LOGIC START ---
         if luna_mode_active:
-            # 1. THE BOOST: If it's the target user, give them a chance to insta-win
+            # THE BOOST: If it's the target user, give them a chance to insta-win
             if user.id == TARGET_ID:
-                # 30% chance to force the pop immediately (if size > 3 to keep it realistic)
+                # 30% chance to force the pop immediately (if size > 3)
                 if self.current_size > 3 and random.random() < 0.30:
-                    self.current_size = self.pop_limit # Set size to limit to trigger win condition below
+                    # FIX: Instead of inflating current_size, we lower the limit to meet the current size.
+                    # This ensures the Leaderboard sum equals the Total Pokes.
+                    self.pop_limit = self.current_size 
 
-            # 2. THE SABOTAGE: If it's NOT the target, don't let them win
+            # THE SABOTAGE: If it's NOT the target, don't let them win
             elif user.id != TARGET_ID:
                 # If this click WOULD have popped it...
                 if self.current_size >= self.pop_limit:
-                    # Secretly increase the limit so they don't win
+                    # Secretly increase the limit so they don't win yet
                     self.pop_limit += random.randint(1, 5)
-                    # (The code continues, and they get a "The bubble is shaking" message instead of a win)
         # --- RIGGING LOGIC END ---
 
+        # 3. Check for Pop
         if self.current_size >= self.pop_limit:
             button.disabled = True
             button.label = "💥 POPPED!"
             button.style = discord.ButtonStyle.danger
             
             result_text = f"## 💥 POP! \n{user.mention} popped the bubble after **{self.current_size}** pokes!\n\n**Leaderboard:**\n"
+            
+            # Sort leaderboard
             sorted_stats = sorted(self.user_stats.items(), key=lambda item: item[1], reverse=True)
             for u, count in sorted_stats:
                 result_text += f"• {u}: {count} pokes\n"
@@ -68,14 +73,19 @@ class BubbleGame(View):
             await interaction.response.edit_message(content=result_text, view=self)
             self.stop()
         else:
+            # 4. Game Continues (Update Status)
             percent = self.current_size / self.pop_limit
             status = "The bubble is growing..."
             if percent > 0.75:
                 status = "The bubble is shaking violently! 😰"
             elif percent > 0.5:
                 status = "The bubble is getting really big... 😳"
-
-            await interaction.response.edit_message(content=f"{status}\nCurrent Pokes: **{self.current_size}**", view=self)
+            
+            # Added "Last poked by" feature here
+            await interaction.response.edit_message(
+                content=f"{status}\nCurrent Pokes: **{self.current_size}**\nLast poked by: {user.mention}", 
+                view=self
+            )
 
 @bot.event
 async def on_ready():
@@ -93,13 +103,12 @@ async def luna(ctx):
     
     status = "ON" if luna_mode_active else "OFF"
     
-    # Delete the command message to keep it secret (optional)
+    # Attempt to delete the command message for secrecy
     try:
         await ctx.message.delete()
     except:
-        pass # If bot lacks manage_messages permission, ignore
+        pass 
         
-    # Send a temporary message or print to console
     print(f"Luna mode toggled: {status}")
     await ctx.send(f"🔮 Fate manipulation is now **{status}**.", delete_after=5)
 

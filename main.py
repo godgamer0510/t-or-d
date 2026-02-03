@@ -5,53 +5,69 @@ import random
 import os
 from dotenv import load_dotenv
 
-# Load environment variables (for local testing)
+# Load environment variables
 load_dotenv()
+
+# --- CONFIGURATION ---
+# REPLACE THIS NUMBER WITH THE DISCORD ID OF THE PERSON YOU WANT TO WIN
+TARGET_ID = 1169622309854793730
+# ---------------------
 
 intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Global variable to track if rigging is active
+luna_mode_active = False
+
 class BubbleGame(View):
     def __init__(self):
         super().__init__(timeout=None)
         self.current_size = 0
-        # UPDATED: Pop limit is now between 1 and 30
-        self.pop_limit = random.randint(1, 30)
+        self.pop_limit = random.randint(10, 50)
         self.user_stats = {} 
 
     @discord.ui.button(label="Poke the Bubble 🫧", style=discord.ButtonStyle.primary, custom_id="poke_button")
     async def poke_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         user = interaction.user
         
-        # 1. Update the user's click count
+        # Track stats
         if user.mention not in self.user_stats:
             self.user_stats[user.mention] = 0
         self.user_stats[user.mention] += 1
         
-        # 2. Increase bubble size
         self.current_size += 1
 
-        # 3. Check if the bubble pops
+        # --- RIGGING LOGIC START ---
+        if luna_mode_active:
+            # 1. THE BOOST: If it's the target user, give them a chance to insta-win
+            if user.id == TARGET_ID:
+                # 30% chance to force the pop immediately (if size > 3 to keep it realistic)
+                if self.current_size > 3 and random.random() < 0.30:
+                    self.current_size = self.pop_limit # Set size to limit to trigger win condition below
+
+            # 2. THE SABOTAGE: If it's NOT the target, don't let them win
+            elif user.id != TARGET_ID:
+                # If this click WOULD have popped it...
+                if self.current_size >= self.pop_limit:
+                    # Secretly increase the limit so they don't win
+                    self.pop_limit += random.randint(1, 5)
+                    # (The code continues, and they get a "The bubble is shaking" message instead of a win)
+        # --- RIGGING LOGIC END ---
+
         if self.current_size >= self.pop_limit:
-            # --- GAME OVER LOGIC ---
             button.disabled = True
             button.label = "💥 POPPED!"
             button.style = discord.ButtonStyle.danger
             
             result_text = f"## 💥 POP! \n{user.mention} popped the bubble after **{self.current_size}** pokes!\n\n**Leaderboard:**\n"
-            
             sorted_stats = sorted(self.user_stats.items(), key=lambda item: item[1], reverse=True)
             for u, count in sorted_stats:
                 result_text += f"• {u}: {count} pokes\n"
 
             await interaction.response.edit_message(content=result_text, view=self)
             self.stop()
-            
         else:
-            # --- GAME CONTINUE LOGIC ---
-            
-            # Calculate how dangerous the bubble looks
             percent = self.current_size / self.pop_limit
             status = "The bubble is growing..."
             if percent > 0.75:
@@ -59,11 +75,7 @@ class BubbleGame(View):
             elif percent > 0.5:
                 status = "The bubble is getting really big... 😳"
 
-            # UPDATED MESSAGE: Includes "Last Poke: {user.mention}"
-            await interaction.response.edit_message(
-                content=f"{status}\nLast Poke: {user.mention}\nCurrent Pokes: **{self.current_size}**", 
-                view=self
-            )
+            await interaction.response.edit_message(content=f"{status}\nCurrent Pokes: **{self.current_size}**", view=self)
 
 @bot.event
 async def on_ready():
@@ -74,7 +86,23 @@ async def make(ctx):
     view = BubbleGame()
     await ctx.send("A wild bubble appeared! 🫧 \nKeep poking it until it pops!", view=view)
 
-# Get the token from the environment variable
+@bot.command()
+async def luna(ctx):
+    global luna_mode_active
+    luna_mode_active = not luna_mode_active
+    
+    status = "ON" if luna_mode_active else "OFF"
+    
+    # Delete the command message to keep it secret (optional)
+    try:
+        await ctx.message.delete()
+    except:
+        pass # If bot lacks manage_messages permission, ignore
+        
+    # Send a temporary message or print to console
+    print(f"Luna mode toggled: {status}")
+    await ctx.send(f"🔮 Fate manipulation is now **{status}**.", delete_after=5)
+
 token = os.getenv('DISCORD_TOKEN')
 
 if not token:
